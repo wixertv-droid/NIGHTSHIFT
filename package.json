@@ -1,0 +1,14 @@
+{
+  "name": "nightshift",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=@nightshift/web",
+    "dev:server": "npm run dev --workspace=@nightshift/server",
+    "build": "npm run build --workspace=@nightshift/shared && npm run build --workspace=@nightshift/server && npm run build --workspace=@nightshift/web"
+  }
+}
