@@ -1,166 +1,30 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import "./App.css";
-
 const socket = io("http://localhost:3001");
-
 type GameStatus = "LOBBY" | "BRIEFING" | "INVESTIGATION" | "FINALE";
 type PlayerRole = "INSIDER" | "ANALYST";
+interface Player { id:string; name:string; host:boolean; role:PlayerRole; ready:boolean; }
+interface GameRoom { code:string; players:Player[]; status:GameStatus; chapter:number; solved:boolean; attempts:number; }
 
-interface Player {
-  id: string;
-  name: string;
-  host: boolean;
-  role: PlayerRole;
-}
+export default function App(){
+ const [connected,setConnected]=useState(socket.connected),[playerName,setPlayerName]=useState(""),[joinCode,setJoinCode]=useState(""),[room,setRoom]=useState<GameRoom|null>(null),[error,setError]=useState(""),[answer,setAnswer]=useState(""),[result,setResult]=useState("");
+ useEffect(()=>{ const on=()=>setConnected(true),off=()=>setConnected(false),roomUpdate=(r:GameRoom)=>{setRoom(r);setError("")};
+ socket.on("connect",on);socket.on("disconnect",off);["room:created","room:updated","game:started","chapter:started"].forEach(e=>socket.on(e,roomUpdate));
+ socket.on("room:error",setError);socket.on("chapter:result",(d:{correct:boolean;room:GameRoom;message:string})=>{setRoom(d.room);setResult(d.message)});
+ return()=>{socket.off("connect",on);socket.off("disconnect",off);["room:created","room:updated","game:started","chapter:started"].forEach(e=>socket.off(e,roomUpdate));socket.off("room:error");socket.off("chapter:result");};},[]);
+ const me=room?.players.find(p=>p.id===socket.id);
+ const create=()=>socket.emit("room:create",playerName),join=()=>socket.emit("room:join",{code:joinCode,playerName}),start=()=>room&&socket.emit("game:start",room.code),ready=()=>room&&socket.emit("briefing:ready",room.code),submit=()=>room&&socket.emit("chapter:answer",{code:room.code,answer});
 
-interface GameRoom {
-  code: string;
-  players: Player[];
-  status: GameStatus;
-  chapter: number;
-}
+ if(room?.status==="INVESTIGATION"&&me){ const insider=me.role==="INSIDER"; return <main className="screen investigation"><div className="noise"/><section className="case-shell"><header className="case-header"><div><span className="eyebrow">FALL 001 // AKTIV</span><h1>DIE VERSCHWUNDENE</h1></div><div className="clock">02:24:18</div></header><div className="mission"><span>KAPITEL 1</span><h2>DER SCHWARZE MERCEDES</h2><p>Vanessa verschwand kurz nach Mitternacht. Um 00:31 verließ ein schwarzer Mercedes den Hinterhof des VELVET. Findet heraus, wer mit diesem Wagen verbunden ist.</p></div>
+ <div className="evidence-grid">
+ {insider?<><article className="evidence chat"><div className="stamp">INSIDER // PRIVAT</div><h3>📱 VANESSAS CHAT</h3><div className="msg other">Mila · 23:28<br/><b>Er ist wieder da.</b></div><div className="msg mine">Vanessa · 23:29<br/>Mit dem schwarzen Wagen?</div><div className="msg other">Mila · 23:29<br/>Ja. Aber Viktor hat ihn heute nicht gefahren. <b>Der Typ aus der VIP-Lounge hatte den Schlüssel.</b></div></article><article className="evidence"><div className="stamp">VELVET // PERSONALNOTIZ</div><h3>🍸 VIP-LOUNGE</h3><p>23:16 — Vanessa serviert <b>Leo Hartmann</b> eine Flasche Whisky.</p><p>23:34 — Leo verlässt die Lounge. Rechnung bleibt offen.</p><p className="redacted">INTERNE NOTIZ ████████████</p></article></>:
+ <><article className="evidence camera"><div className="stamp">CAM 04 // HINTERHOF</div><h3>◉ ÜBERWACHUNGSPROTOKOLL</h3><p>23:27 — B-VE 814 // EINFAHRT</p><p>00:19 — Person am Hinterausgang</p><p>00:22 — Vanessas Telefon offline</p><p><b>00:31 — B-VE 814 // AUSFAHRT</b></p><div className="scanline"/></article><article className="evidence"><div className="stamp">FAHRZEUGREGISTER // TREFFER</div><h3>🚘 B-VE 814</h3><p>Mercedes-Benz E-Klasse · schwarz</p><p>Halter: <b>Hartmann Consulting GmbH</b></p><p>Geschäftsführer: <b>Leon „Leo“ Hartmann</b></p><p className="muted">Fahrzeug wird regelmäßig vom Firmenfahrer genutzt.</p></article></>}
+ </div><aside className="coop-note"><b>KOOP-HINWEIS:</b> Dein Partner sieht andere Beweise. Beschreibt euch gegenseitig genau, was ihr gefunden habt.</aside><section className="solve"><label>WER IST MIT DEM MERCEDES VERBUNDEN?</label><div className="answer-row"><input value={answer} onChange={e=>setAnswer(e.target.value)} placeholder="Name der Person…" onKeyDown={e=>e.key==="Enter"&&submit()}/><button className="primary" onClick={submit}>SPUR PRÜFEN</button></div>{result&&<div className={room.solved?"result success":"result"}>{result}</div>}{room.solved&&<div className="cliffhanger"><span>NEUE SPUR FREIGESCHALTET</span><h3>ZIMMER 307</h3><p>Auf Leos unbezahlter Rechnung steht handschriftlich nur eine Adresse — und eine Zimmernummer.</p></div>}</section></section></main> }
 
-export default function App() {
-  const [connected, setConnected] = useState(socket.connected);
-  const [playerName, setPlayerName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [room, setRoom] = useState<GameRoom | null>(null);
-  const [error, setError] = useState("");
+ if(room?.status==="BRIEFING"&&me){const insider=me.role==="INSIDER";return <main className="screen briefing-screen"><div className="noise"/><section className="panel briefing-card"><div className="eyebrow">NIGHTSHIFT // STRENG VERTRAULICH</div><div className="brief-time">02:17</div><h1>FALL #001</h1><h2>DIE VERSCHWUNDENE</h2><div className="meta">RABENSTADT // SAMSTAG // REGEN</div><div className="divider"/><div className="role-card"><span>DEINE ROLLE</span><h3>{insider?"DER INSIDER":"DER ANALYST"}</h3><p>{insider?"Du kennst die Menschen der Nacht: Clubs, Kontakte, Aussagen und Dinge, die nie in einer Akte landen.":"Du findest Muster in Daten: Kameras, Fahrzeuge, Zeitlinien und digitale Spuren."}</p></div><div className="incoming"><span>EINGEHENDE NACHRICHT // VIKTOR BRANDT</span><blockquote>„Vanessa Kern. 26. Sie hat mir etwas genommen. Findet sie vor Sonnenaufgang. Keine Polizei.“</blockquote><b>AUFTRAG: 5.000 €</b></div><p>Letzter bestätigter Aufenthaltsort: <b>Nachtclub VELVET</b>. Ihr Telefon ist seit 00:22 Uhr offline.</p><button className="primary" disabled={me.ready} onClick={ready}>{me.ready?"BEREIT // WARTE AUF PARTNER":"ICH BIN BEREIT"}</button><div className="readyline">{room.players.map(p=><span key={p.id} className={p.ready?"ready":""}>● {p.name}</span>)}</div></section></main>}
 
-  useEffect(() => {
-    const onConnect = () => setConnected(true);
-    const onDisconnect = () => setConnected(false);
-    const onRoom = (nextRoom: GameRoom) => {
-      setRoom(nextRoom);
-      setError("");
-    };
-    const onError = (message: string) => setError(message);
+ if(room){return <main className="screen"><section className="panel lobby-card"><div className="eyebrow">SICHERE VERBINDUNG // FALLVORBEREITUNG</div><h1 className="logo small">NIGHTSHIFT</h1><div className="room-code-label">EINSATZCODE</div><div className="room-code">{room.code}</div><p className="muted">Nur an deinen Partner weitergeben.</p><div className="divider"/><div className="players">{room.players.map(p=><div className="player-row" key={p.id}><span>{p.name}</span><span>{p.host?"HOST":"PARTNER"} · ONLINE</span></div>)}</div>{room.players.length===1?<p className="waiting pulse">Warte auf sichere Verbindung…</p>:me?.host?<button className="primary" onClick={start}>FALL 001 STARTEN</button>:<p className="waiting">Host startet den Fall…</p>}</section></main>}
 
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-    socket.on("room:created", onRoom);
-    socket.on("room:updated", onRoom);
-    socket.on("game:started", onRoom);
-    socket.on("room:error", onError);
-
-    return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-      socket.off("room:created", onRoom);
-      socket.off("room:updated", onRoom);
-      socket.off("game:started", onRoom);
-      socket.off("room:error", onError);
-    };
-  }, []);
-
-  const me = room?.players.find((player) => player.id === socket.id);
-
-  function createRoom() {
-    setError("");
-    socket.emit("room:create", playerName);
-  }
-
-  function joinRoom() {
-    setError("");
-    socket.emit("room:join", { code: joinCode, playerName });
-  }
-
-  function startGame() {
-    if (room) socket.emit("game:start", room.code);
-  }
-
-  if (room?.status === "BRIEFING" && me) {
-    const insider = me.role === "INSIDER";
-
-    return (
-      <main className="screen briefing-screen">
-        <section className="panel briefing-card">
-          <div className="eyebrow">NIGHTSHIFT // VERTRAULICH</div>
-          <h1>FALL #001</h1>
-          <h2>DIE VERSCHWUNDENE</h2>
-          <div className="meta">RABENSTADT // SAMSTAG // 02:17 UHR</div>
-
-          <div className="divider" />
-
-          <div className="eyebrow">DEINE ROLLE</div>
-          <h3>{insider ? "DER INSIDER" : "DER ANALYST"}</h3>
-          <p>
-            {insider
-              ? "Du kennst Rabenstadts Nachtleben, Informanten, Clubs und die Leute, die lieber keine Fragen beantworten."
-              : "Du arbeitest mit Daten, Zeitlinien, Kameras, Transaktionen und digitalen Spuren."}
-          </p>
-          <p className="muted">Dein Partner erhält andere Informationen als du.</p>
-
-          <div className="divider" />
-
-          <div className="eyebrow">AUFTRAGGEBER</div>
-          <h3>VIKTOR BRANDT</h3>
-          <blockquote>
-            „Vanessa hat mir etwas genommen. Findet sie vor Sonnenaufgang. Keine Polizei. 5.000 € für euch beide.“
-          </blockquote>
-          <p>Vanessa Kern wurde zuletzt im Nachtclub VELVET gesehen. Seit 00:22 Uhr ist ihr Telefon offline.</p>
-          <strong className="warning">Vertraue den Beweisen. Nicht den Menschen.</strong>
-        </section>
-      </main>
-    );
-  }
-
-  if (room) {
-    return (
-      <main className="screen">
-        <section className="panel lobby-card">
-          <div className="eyebrow">FALLVORBEREITUNG</div>
-          <h1>NIGHTSHIFT</h1>
-          <div className="room-code-label">RAUMCODE</div>
-          <div className="room-code">{room.code}</div>
-          <p className="muted">Teile den Code mit deinem Partner.</p>
-
-          <div className="divider" />
-
-          <div className="players">
-            {room.players.map((player) => (
-              <div className="player-row" key={player.id}>
-                <span>{player.name}</span>
-                <span>{player.host ? "HOST" : "PARTNER"} · ONLINE</span>
-              </div>
-            ))}
-          </div>
-
-          {room.players.length === 1 ? (
-            <p className="waiting">Warte auf den zweiten Spieler…</p>
-          ) : me?.host ? (
-            <button className="primary" onClick={startGame}>FALL BEGINNEN</button>
-          ) : (
-            <p className="waiting">Der Host bereitet den Fall vor…</p>
-          )}
-
-          {error && <p className="error">{error}</p>}
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className="screen">
-      <section className="panel home-card">
-        <div className="status"><span className={connected ? "dot online" : "dot"} />{connected ? "SERVER VERBUNDEN" : "SERVER OFFLINE"}</div>
-        <div className="eyebrow">A CO-OP CRIME EXPERIENCE</div>
-        <h1 className="logo">NIGHTSHIFT</h1>
-        <p className="tagline">Zwei Spieler. Zwei Wahrheiten. Ein Fall.</p>
-
-        <label>DEIN CODENAME</label>
-        <input value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="z. B. Raven" maxLength={20} />
-        <button className="primary" onClick={createRoom} disabled={!connected || !playerName.trim()}>NEUEN FALL STARTEN</button>
-
-        <div className="divider"><span>ODER</span></div>
-
-        <label>RAUMCODE</label>
-        <input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} placeholder="XXXXXX" maxLength={6} />
-        <button onClick={joinRoom} disabled={!connected || !playerName.trim() || joinCode.length !== 6}>SPIEL BEITRETEN</button>
-
-        {error && <p className="error">{error}</p>}
-      </section>
-    </main>
-  );
+ return <main className="screen home"><div className="noise"/><section className="panel home-card"><div className="status"><span className={connected?"dot online":"dot"}/>{connected?"NETZWERK BEREIT":"OFFLINE"}</div><div className="eyebrow">A TWO PLAYER CRIME MYSTERY</div><h1 className="logo">NIGHTSHIFT</h1><p className="tagline">Zwei Ermittler. Getrennte Beweise. Eine Wahrheit.</p><label>CODENAME</label><input value={playerName} onChange={e=>setPlayerName(e.target.value)} placeholder="Dein Codename" maxLength={20}/><button className="primary" onClick={create} disabled={!connected||!playerName.trim()}>NEUEN FALL ERÖFFNEN</button><div className="divider"><span>ODER</span></div><label>EINSATZCODE</label><input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())} placeholder="XXXXXX" maxLength={6}/><button onClick={join} disabled={!connected||!playerName.trim()||joinCode.length!==6}>PARTNER BEITRETEN</button>{error&&<p className="error">{error}</p>}</section></main>;
 }
